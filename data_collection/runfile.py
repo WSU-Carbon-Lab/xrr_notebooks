@@ -55,6 +55,20 @@ def process_stitch(
     return pd.DataFrame({"theta": theta, "ccd": ccd, "hos": hos, "hes": hes, "et": et})
 
 
+def add_overlap(
+    current_df: pd.DataFrame, last_df: pd.DataFrame, overlap: int, repeat: int
+) -> pd.DataFrame:
+    """Add overlap to the current_df."""
+    # Add back the overlap points
+    overlap_df = last_df.iloc[-overlap:]
+    overlap_df["hos"] = current_df.iloc[0]["hos"]
+    overlap_df["hes"] = current_df.iloc[0]["hes"]
+    overlap_df["et"] = current_df.iloc[0]["et"]
+    # In the overlap_df repeat the first point repeat times
+    overlap_df = pd.concat([overlap_df.iloc[0:1]] * repeat)
+    return pd.concat([overlap_df, current_df])
+
+
 def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.DataFrame:
     """Generate a chunk for a single energy."""
     theta = df_slice.loc["theta"]
@@ -81,7 +95,7 @@ def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.Da
 
 
 def generate_runfile(macro_folder=str | Path) -> None:
-    r"""
+    """
     Generate a run file.
 
     Parameters
@@ -146,7 +160,7 @@ def generate_runfile(macro_folder=str | Path) -> None:
 
     df = pd.concat(df)
     df["z"] = config["geometry"]["z"]
-    display(df)
+    print(df)
     df = df.reindex(
         columns=[
             "x",
@@ -180,7 +194,7 @@ def generate_runfile(macro_folder=str | Path) -> None:
             "",
         ],
     )
-    display(df)
+    print(df)
     return df, config["name"]
 
     # Construct the runfile

@@ -10,7 +10,7 @@ config:
     density: 12
     overlap: 3
     izero: 10
-    check: 0
+    check: 3
   izero:
     exposure: 0.001
     hos: 8.9
