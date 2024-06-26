@@ -12,7 +12,7 @@ config:
     izero: 10
     check: 3
   izero:
-    exposure: 0.001
+    et: 0.001
     hos: 8.9
     hes: 3000
 

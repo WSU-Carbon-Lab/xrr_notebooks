@@ -1,5 +1,5 @@
 """
-# XRR Runfile Generator
+# XRR Runfile Generator.
 
 This module is used to generate a runfile for the XRR experiment at the ALS beamline
 """
@@ -7,10 +7,12 @@ This module is used to generate a runfile for the XRR experiment at the ALS beam
 import datetime
 from pathlib import Path
 
+import ipywidgets as widgets
 import numpy as np
 import pandas as pd
+import polars as pl
+import tabulate
 import yaml
-import ipywidgets as widgets
 
 DATA_PATH = (
     Path("Washington State University (email.wsu.edu)")
@@ -23,7 +25,6 @@ DATA_PATH = (
 
 # Ipywidgets command to construct a fillable form used to update the config.yaml file
 # with the necessary information for the XRR experiment
-
 
 
 def unique_filename(path: Path) -> Path:
@@ -40,12 +41,12 @@ def load_config(config: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     with config.open("rb") as f:
         config = yaml.safe_load(f)
 
-    df = pd.DataFrame(config["energy"])
+    df = pl.DataFrame({str(k): v for k, v in config["energy"].items()}, strict=False)
     return df, config["config"]
 
 
 def process_stitch(
-    theta_i, theta_f, hos, hes, energy, et, points_per_fringe, fringe_size
+    theta_i, theta_f, hos, hes, energy, et, points_per_fringe, fringe_size, x
 ) -> pd.DataFrame:
     """Process a stitch."""
     # Use q space instead of theta space
@@ -60,30 +61,44 @@ def process_stitch(
     hos = np.full_like(theta, hos)
     hes = np.full_like(theta, hes)
     et = np.full_like(theta, et)
+    x = np.full_like(theta, x)
+    energy = np.full_like(theta, energy)
 
-    return pd.DataFrame({"theta": theta, "ccd": ccd, "hos": hos, "hes": hes, "et": et})
+    return pl.DataFrame(
+        {
+            "theta": theta,
+            "ccd": ccd,
+            "hos": hos,
+            "hes": hes,
+            "et": et,
+            "x": x,
+            "energy": energy,
+        }
+    )
 
 
 def add_overlap(
-    current_df: pd.DataFrame, last_df: pd.DataFrame, overlap: int, repeat: int
+    current_df: pl.DataFrame, last_df: pl.DataFrame, overlap: int, repeat: int
 ) -> pd.DataFrame:
     """Add overlap to the current_df."""
     # Add back the overlap points
-    overlap_df = last_df.iloc[-overlap:]
-    overlap_df["hos"] = current_df.iloc[0]["hos"]
-    overlap_df["hes"] = current_df.iloc[0]["hes"]
-    overlap_df["et"] = current_df.iloc[0]["et"]
+    overlap_df = last_df[-overlap:]
+    overlap_df["hos"] = current_df[0, "hos"]
+    overlap_df["hes"] = current_df[0, "hes"]
+    overlap_df["et"] = current_df[0, "et"]
     # In the overlap_df repeat the first point repeat times
-    overlap_df = pd.concat([overlap_df.iloc[0:1]] * repeat)
-    return pd.concat([overlap_df, current_df])
+    overlap_df = pl.concat([overlap_df[0:1]] * repeat)
+    return pl.concat([overlap_df, current_df])
 
 
 def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.DataFrame:
     """Generate a chunk for a single energy."""
-    theta = df_slice.loc["theta"]
-    hos = df_slice.loc["hos"]
-    hes = df_slice.loc["hes"]
-    et = df_slice.loc["et"]
+    theta = df_slice["theta"]
+    hos = df_slice["hos"]
+    hes = df_slice["hes"]
+    et = df_slice["et"]
+    n_izero = config["collection"]["izero"]
+    x = config["geometry"]["x"]
 
     # This is parameterized by the number of points in a fringe
     points_per_fringe = config["collection"]["density"]
@@ -92,14 +107,25 @@ def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.Da
     theta_pairs = [(theta[i], theta[i + 1]) for i in range(len(theta) - 1)]
     energy_df = []
     for i, (t_i, t_f) in enumerate(theta_pairs):
+        x += i * 0.1
         stitch_df = process_stitch(
-            t_i, t_f, hos[i], hes[i], energy, et[i], points_per_fringe, fringe_size
+            t_i, t_f, hos[i], hes[i], energy, et[i], points_per_fringe, fringe_size, x
         )
-        stitch_df["x"] = config["geometry"]["x"] + i * 0.1
         energy_df.append(stitch_df)
 
-    energy_df = pd.concat(energy_df)
-    energy_df["energy"] = energy
+    energy_df = pl.concat(energy_df)
+    izero = pl.DataFrame(
+        {
+            "theta": [0.0] * n_izero,
+            "ccd": [0.0] * n_izero,
+            "hos": [config["izero"]["hos"]] * n_izero,
+            "hes": [float(config["izero"]["hes"])] * n_izero,
+            "et": [config["izero"]["et"]] * n_izero,
+            "x": [config["geometry"]["x"]] * n_izero,
+            "energy": [energy] * n_izero,
+        }
+    )
+    energy_df = pl.concat([izero, energy_df])
     return energy_df
 
 
@@ -157,59 +183,58 @@ def generate_runfile(macro_folder=str | Path) -> None:
     Exposure Time : float
         Exposure Time - This column has no label in the run file
     """
-    df_stitches, config = load_config(Path.cwd() / "config.yaml")
+    df_stitches, config = load_config(Path(__file__).parent / "config.yaml")
     save_path = Path(macro_folder) / f"{config["name"]}.txt"
     # Generate a new name if the file allready exists
 
     df = []
     for i, en in enumerate(df_stitches.columns):
-        energy_df = process_energy(df_stitches[en], config, float(en))
-        energy_df["y"] = config["geometry"]["y"] + i * 0.1
+        energy_df = process_energy(df_stitches[en][0], config, float(en))
+        y = pl.Series("y", [config["geometry"]["y"]] * len(energy_df))
+        energy_df = energy_df.hstack([y])
         df.append(energy_df)
 
-    df = pd.concat(df)
-    df["z"] = config["geometry"]["z"]
-    print(df)
-    df = df.reindex(
-        columns=[
-            "x",
-            "y",
-            "z",
-            "theta",
-            "ccd",
-            "hos",
-            "hes",
-            "energy",
-            "et",
-        ]
+    df = pl.concat(df)
+    z = pl.Series("z", [config["geometry"]["z"]] * len(df))
+    df = df.hstack([z])
+    df = df.select(
+        pl.col("x"),
+        pl.col("y"),
+        pl.col("z"),
+        pl.col("theta"),
+        pl.col("ccd"),
+        pl.col("hos"),
+        pl.col("hes"),
+        pl.col("energy"),
+        pl.col("et"),
+    )
+    df.rename(
+        {
+            "x": "Sample X",
+            "y": "Sample Y",
+            "z": "Sample Z",
+            "theta": "Sample Theta",
+            "ccd": "CCD Theta",
+            "hos": "Higher Order Suppressor",
+            "hes": "Horizontal Exit Slit Size",
+            "energy": "Beamline Energy",
+            "et": "",
+        }
     )
     if save_path.exists():
         # Check if ther are changes in the file
         save_path = unique_filename(save_path)
 
-    df.to_csv(
+    df.write_csv(
         save_path,
-        sep="\t",
-        index=False,
-        header=[
-            "Sample X",
-            "Sample Y",
-            "Sample Z",
-            "Sample Theta",
-            "CCD Theta",
-            "Higher Order Suppressor",
-            "Horizontal Exit Slit Size",
-            "Beamline Energy",
-            "",
-        ],
+        separator="\t",
     )
-    print(df)
     return df, config["name"]
 
     # Construct the runfile
 
 
-def runfile():S
+def runfile():
     """
     Constructes the macro for the XRR experiment allong with saving the data.
 
@@ -271,8 +296,14 @@ def runfile():S
 
     # Generate the runfile
     df, name = generate_runfile(save_path)
-    df["name"] = name
-    df["date-time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(pl.DataFrame(df))
+
+    name = pl.Series("name", [name] * len(df))
+    dt = pl.Series(
+        "date-time", [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")] * len(df)
+    )
+
+    df = df.hstack([name, dt])
 
     if (all_data_path / "all_data.parqet").exists():
         all_data = pd.read_csv(all_data_path / "all_data.parquet")
@@ -280,4 +311,8 @@ def runfile():S
     else:
         all_data = df
 
-    all_data.to_parquet(all_data_path / "all_data.parquet", index=False)
+    all_data.write_parquet(all_data_path / "all_data.parquet")
+
+
+if __name__ == "__main__":
+    runfile()
