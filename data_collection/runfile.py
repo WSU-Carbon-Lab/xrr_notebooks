@@ -1,4 +1,8 @@
-"""Run File Generator."""
+"""
+# XRR Runfile Generator
+
+This module is used to generate a runfile for the XRR experiment at the ALS beamline
+"""
 
 import datetime
 from pathlib import Path
@@ -6,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+import ipywidgets as widgets
 
 DATA_PATH = (
     Path("Washington State University (email.wsu.edu)")
@@ -15,6 +20,10 @@ DATA_PATH = (
     / "Data"
     / "BL1101"
 )
+
+# Ipywidgets command to construct a fillable form used to update the config.yaml file
+# with the necessary information for the XRR experiment
+
 
 
 def unique_filename(path: Path) -> Path:
@@ -200,8 +209,49 @@ def generate_runfile(macro_folder=str | Path) -> None:
     # Construct the runfile
 
 
-def runfile():
-    """Setup the XRR experiment."""
+def runfile():S
+    """
+    Constructes the macro for the XRR experiment allong with saving the data.
+
+    Example
+    -------
+    >>> generate_runfile("sample1", path_to_save)
+    File
+    >>> Sample X --> ... Sample Theta --> CCD Theta --> ... Beamline Energy -->
+    >>> 12.4     --> ... 0.0           --> 0.0         --> ... 250          --> .001
+    >>> 12.4     --> ... 0.0           --> 0.0         --> ... 250          --> .001
+    >>>   ⋮                ⋮                  ⋮                   ⋮                 ⋮
+    >>> 12.4     --> ... 70            --> 140         --> ... 319          --> 10
+
+    Columns
+    -------
+    Sample X : float
+        Sample X position
+
+    Sample Y : float
+        Sample Y position
+
+    Sample Z : float
+        Sample Z position
+
+    Sample Theta : float
+        Sample Theta position
+
+    CCD Theta : float
+        CCD Theta position
+
+    Higher Order Suppressor : float
+        Higher Order Suppressor position
+
+    Horizontal Exit Slit Size: float
+        Horizontal Exit Slit position
+
+    Beamline Energy : float
+        Beamline Energy
+
+    Exposure Time : float
+        Exposure Time - This column has no label in the run file
+    """
     # Create the save location for the data
     date = datetime.datetime.now()
     beamtime = f"{date.strftime('%Y%b')}/XRR/"
@@ -231,6 +281,3 @@ def runfile():
         all_data = df
 
     all_data.to_parquet(all_data_path / "all_data.parquet", index=False)
-
-
-runfile()
