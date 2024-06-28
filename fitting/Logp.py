@@ -3,15 +3,17 @@ from typing import Literal
 type Parameter = Literal["thick_rough", "birefringence", "delta"]
 
 
-class LogpExtra(object):
+class LogpExtra:
     def __init__(
         self,
         objective,
         surface_label: str = "surf",
-        constraints: list[Parameter] = ["thick_rough", "birefringence", "delta"],
+        constraints: list[Parameter] | None = None,
     ):
         # we'll store the parameters and objective in this object
         # this will be necessary for pickling in the future
+        if constraints is None:
+            constraints = ["thick_rough", "birefringence", "delta"]
         self.objective = objective  ##Full list of parameters
         self.pars = self.objective.parameters.flattened()
         self.terms = [
@@ -78,7 +80,7 @@ class LogpExtra(object):
                     return -np.inf
 
 
-class LogpExtra_rough(object):
+class LogpExtra_rough:
     def __init__(self, objective):
         # we'll store the parameters and objective in this object
         # this will be necessary for pickling in the future
@@ -114,11 +116,11 @@ def sort_pars(pars, str_check, vary=None, str_not=" "):
     num = len(pars)
     for i in range(num):
         if str_check in pars[i].name and str_not not in pars[i].name:
-            if vary == True:
-                if pars[i].vary == True:
+            if vary is True:
+                if pars[i].vary is True:
                     temp.append(pars[i])
-            elif vary == False:
-                if pars[i].vary == False:
+            elif vary is False:
+                if pars[i].vary is False:
                     temp.append(pars[i])
             else:
                 temp.append(pars[i])

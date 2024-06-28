@@ -35,7 +35,7 @@ znpc_mono = {
 }
 
 data = []
-en: list[float] = [float(k) for k in znpc_mono.keys() if k != "250"]
+en: list[float] = [float(k) for k in znpc_mono if k != "250"]
 
 print("Data Loaded from Database")
 
@@ -57,7 +57,6 @@ for i, e in enumerate(znpc_mono.keys()):
 
 print("Data Masked")
 
-from typing import Literal
 
 from numpy import array, ndarray
 
@@ -192,9 +191,9 @@ def sld_constraint(
     slab.rough.setp(vary=True, bounds=(0, znpc_rough))
 
 
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(bulk, bounds)]
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(surf, bounds)]
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(c_ordered, bounds)]
+_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(bulk, bounds, strict=False)]
+_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(surf, bounds, strict=False)]
+_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(c_ordered, bounds, strict=False)]
 
 for i, slab in enumerate(bulk):
     slab.thick.setp(vary=None, constraint=znpc_thick - surf[i].thick.value)
@@ -232,7 +231,7 @@ def multi_energy_constraints(struc: list[PXR_Structure]):
     variable_slabs = struc[0].data
     const_slabs = struc[1].data
 
-    for vary, const in zip(variable_slabs, const_slabs):
+    for vary, const in zip(variable_slabs, const_slabs, strict=False):
         if const.thick.vary:
             if const.name == "Bulk":
                 vary.thick.setp(
@@ -242,9 +241,7 @@ def multi_energy_constraints(struc: list[PXR_Structure]):
                 )
             const.thick.setp(vary=None, constraint=vary.thick.value)
             const.rough.setp(vary=None, constraint=vary.rough.value)
-            if const.name == "SiO2":
-                const.sld.density.setp(vary=None, constraint=vary.sld.density.value)
-            elif "C_Amorphous" in const.name:
+            if const.name == "SiO2" or "C_Amorphous" in const.name:
                 const.sld.density.setp(vary=None, constraint=vary.sld.density.value)
 
 
@@ -270,7 +267,6 @@ for i, struc in enumerate(strucs):
     global_obj = GlobalObjective(objs)
     global_objs.append(global_obj)
 
-import pickle as pkl
 
 
 class Fitter:
