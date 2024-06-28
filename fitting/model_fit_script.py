@@ -191,9 +191,18 @@ def sld_constraint(
     slab.rough.setp(vary=True, bounds=(0, znpc_rough))
 
 
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(bulk, bounds, strict=False)]
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(surf, bounds, strict=False)]
-_ = [sld_constraint(slab, bounds=bound) for (slab, bound) in zip(c_ordered, bounds, strict=False)]
+_ = [
+    sld_constraint(slab, bounds=bound)
+    for (slab, bound) in zip(bulk, bounds, strict=False)
+]
+_ = [
+    sld_constraint(slab, bounds=bound)
+    for (slab, bound) in zip(surf, bounds, strict=False)
+]
+_ = [
+    sld_constraint(slab, bounds=bound)
+    for (slab, bound) in zip(c_ordered, bounds, strict=False)
+]
 
 for i, slab in enumerate(bulk):
     slab.thick.setp(vary=None, constraint=znpc_thick - surf[i].thick.value)
@@ -266,7 +275,6 @@ for i, struc in enumerate(strucs):
         objs.append(obj_p)
     global_obj = GlobalObjective(objs)
     global_objs.append(global_obj)
-
 
 
 class Fitter:
