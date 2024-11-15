@@ -1,6 +1,6 @@
 # Configure this file to set the parameters for the data collection
 config:
-  name: 'test'
+  name: 'znpc'
   geometry:
     x: 12.4
     y: 4.5
@@ -16,6 +16,7 @@ config:
     et: 0.001
     hos: 8.9
     hes: 3000
+    z: -1
 
 energy:
   250:

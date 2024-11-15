@@ -7,36 +7,34 @@ This module is used to generate a runfile for the XRR experiment at the ALS beam
 import datetime
 from pathlib import Path
 
-import ipywidgets as widgets
 import numpy as np
 import pandas as pd
 import polars as pl
-import tabulate
 import yaml
-
-DATA_PATH = (
-    Path("Washington State University (email.wsu.edu)")
-    / "Carbon Lab Research Group - Documents"
-    / "Synchrotron Logistics and Data"
-    / "ALS - Berkeley"
-    / "Data"
-    / "BL1101"
-)
-
-# Ipywidgets command to construct a fillable form used to update the config.yaml file
-# with the necessary information for the XRR experiment
 
 
 def unique_filename(path: Path) -> Path:
     """Generate a unique filename."""
-    i = 1
-    while path.exists():
-        path = path.with_name(f"{path.stem}({i}){path.suffix}")
-        i += 1
-    return path
+    if not path.exists():
+        return path
+
+    stem, suffix = path.stem, path.suffix
+    if "(" in stem and ")" in stem:
+        base, num = stem.rsplit("(", 1)
+        num = num.rstrip(")")
+        if num.isdigit():
+            num = int(num) + 1
+        else:
+            num = 1
+    else:
+        base = stem
+        num = 1
+
+    new_path = path.parent / f"{base}({num}){suffix}"
+    return unique_filename(new_path)
 
 
-def load_config(config: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_config(config: str | Path) -> tuple[pd.DataFrame, dict]:
     """Parse the config.yaml file."""
     with config.open("rb") as f:
         config = yaml.safe_load(f)
@@ -56,13 +54,13 @@ def process_stitch(
     n_points = int(np.ceil((q_f - q_i) / fringe_size) * points_per_fringe)
 
     q = np.linspace(q_i, q_f, n_points)
-    theta = np.rad2deg(np.arcsin(q * (12.4 / energy) / (4 * np.pi)))
-    ccd = 2 * theta
-    hos = np.full_like(theta, hos)
-    hes = np.full_like(theta, hes)
-    et = np.full_like(theta, et)
-    x = np.full_like(theta, x)
-    energy = np.full_like(theta, energy)
+    theta = np.rad2deg(np.arcsin(q * (12.4 / energy) / (4 * np.pi))).round(2)
+    ccd = 2 * theta.round(2)
+    hos = np.full_like(theta, hos).round(2)
+    hes = np.full_like(theta, hes).round(0)
+    et = np.full_like(theta, et).round(3)
+    x = np.full_like(theta, x).round(3)
+    energy = np.full_like(theta, energy).round(2)
 
     return pl.DataFrame(
         {
@@ -114,6 +112,9 @@ def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.Da
         energy_df.append(stitch_df)
 
     energy_df = pl.concat(energy_df)
+    energy_df = energy_df.with_columns(
+        pl.lit(config["geometry"]["z"], dtype=pl.Float64).alias("z"),
+    )
     izero = pl.DataFrame(
         {
             "theta": [0.0] * n_izero,
@@ -123,13 +124,26 @@ def process_energy(df_slice: pd.DataFrame, config: dict, energy: float) -> pd.Da
             "et": [config["izero"]["et"]] * n_izero,
             "x": [config["geometry"]["x"]] * n_izero,
             "energy": [energy] * n_izero,
-        }
+            "z": [config["izero"]["z"]] * n_izero,
+        },
+        schema_overrides={
+            "theta": pl.Float64,
+            "ccd": pl.Float64,
+            "hos": pl.Float64,
+            "hes": pl.Float64,
+            "et": pl.Float64,
+            "x": pl.Float64,
+            "energy": pl.Float64,
+            "z": pl.Float64,
+        },
     )
     energy_df = pl.concat([izero, energy_df])
     return energy_df
 
 
-def generate_runfile(macro_folder=str | Path) -> None:
+def generate_runfile(
+    df_stitches, config, macro_folder=str | Path
+) -> tuple[pl.DataFrame, str]:
     """
     Generate a run file.
 
@@ -183,20 +197,18 @@ def generate_runfile(macro_folder=str | Path) -> None:
     Exposure Time : float
         Exposure Time - This column has no label in the run file
     """
-    df_stitches, config = load_config(Path(__file__).parent / "config.yaml")
-    save_path = Path(macro_folder) / f"{config["name"]}.txt"
+    energies = ", ".join(df_stitches.columns)
+    save_path = Path(macro_folder) / f"{config["name"]}[{''.join(energies)}].txt"
     # Generate a new name if the file allready exists
 
     df = []
-    for _i, en in enumerate(df_stitches.columns):
+    for _, en in enumerate(df_stitches.columns):
         energy_df = process_energy(df_stitches[en][0], config, float(en))
         y = pl.Series("y", [config["geometry"]["y"]] * len(energy_df))
         energy_df = energy_df.hstack([y])
         df.append(energy_df)
 
     df = pl.concat(df)
-    z = pl.Series("z", [config["geometry"]["z"]] * len(df))
-    df = df.hstack([z])
     df = df.select(
         pl.col("x"),
         pl.col("y"),
@@ -208,7 +220,7 @@ def generate_runfile(macro_folder=str | Path) -> None:
         pl.col("energy"),
         pl.col("et"),
     )
-    df.rename(
+    df = df.rename(
         {
             "x": "Sample X",
             "y": "Sample Y",
@@ -218,23 +230,23 @@ def generate_runfile(macro_folder=str | Path) -> None:
             "hos": "Higher Order Suppressor",
             "hes": "Horizontal Exit Slit Size",
             "energy": "Beamline Energy",
-            "et": "",
+            "et": "Exposure",
         }
     )
     if save_path.exists():
         # Check if ther are changes in the file
         save_path = unique_filename(save_path)
-
-    df.write_csv(
-        save_path,
-        separator="\t",
-    )
-    return df, config["name"]
+    # df = df.sort(
+    #     ["Sample Theta", "Higher Order Suppressor", "Horizontal Exit Slit Size"]
+    # )
+    df = pl.DataFrame(df)
+    print(df)
+    return df, save_path
 
     # Construct the runfile
 
 
-def runfile():
+def runfile(config: str | Path, data_path: str | Path = Path.cwd()) -> None:
     """
     Constructes the macro for the XRR experiment allong with saving the data.
 
@@ -280,39 +292,25 @@ def runfile():
     # Create the save location for the data
     date = datetime.datetime.now()
     beamtime = f"{date.strftime('%Y%b')}/XRR/"
-    date = date.strftime("%Y %m %d")
 
-    data_path = Path.home() / DATA_PATH
-    save_path = data_path / beamtime / ".macro" / date
-    all_data_path = data_path / "XRR"
+    df_stitches, config_dict = load_config(config)
 
-    if not save_path.exists():
-        save_path.mkdir(parents=True)
-        print(f"Created {save_path}")
-
-    if not all_data_path.exists():
-        all_data_path.mkdir(parents=True)
-        print(f"Created {all_data_path}")
-
+    save_path = data_path / beamtime / ".macro"
     # Generate the runfile
-    df, name = generate_runfile(save_path)
-    print(pl.DataFrame(df))
+    df, name = generate_runfile(df_stitches, config_dict, save_path)
+    if not name.parent.exists():
+        name.parent.mkdir(parents=True)
 
-    name = pl.Series("name", [name] * len(df))
-    dt = pl.Series(
-        "date-time", [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")] * len(df)
-    )
+    name = unique_filename(name)
 
-    df = df.hstack([name, dt])
+    df.write_csv(name, separator="\t")
+    # remove the last newline, and the "" column name
+    runfile_name = name
+    with open(runfile_name, "r") as f:
+        lines = f.readlines()
 
-    if (all_data_path / "all_data.parqet").exists():
-        all_data = pd.read_csv(all_data_path / "all_data.parquet")
-        all_data = pd.concat([all_data, df])
-    else:
-        all_data = df
+    lines[0] = lines[0].replace("\tExposure", "")  # Remove the 'Exposure' header
+    lines[-1] = lines[-1].replace("\n", "")  # Remove the last carriage return
 
-    all_data.write_parquet(all_data_path / "all_data.parquet")
-
-
-if __name__ == "__main__":
-    runfile()
+    with open(runfile_name, "w") as f:
+        f.writelines(lines)
