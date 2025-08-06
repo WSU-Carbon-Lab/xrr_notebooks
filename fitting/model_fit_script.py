@@ -2,9 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
-from refnx.analysis import CurveFitter, GlobalObjective, Objective, Transform
-
 import pyref.fitting as fit
+from refnx.analysis import CurveFitter, GlobalObjective, Objective, Transform
 
 df = pl.read_parquet("june_processed.parquet").sort(pl.col("pol"), descending=True)
 df = df.filter(pl.col("sample").str.starts_with("mono"))

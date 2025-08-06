@@ -1,0 +1,14 @@
+[project]
+name = "xrr-notebooks"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyrefly>=0.38.2",
+    "ruff",
+]
+
+
+[tool.ruff]
+include = ["**/*.py", "**/*.ipynb"]
