@@ -5,8 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "joypy>=0.2.6",
     "pyrefly>=0.38.2",
+    "ridgeplot>=0.5.0",
     "ruff",
+    "scienceplots>=2.1.1",
+    "uncertainties>=3.2.3",
 ]
 
 
