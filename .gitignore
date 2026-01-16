@@ -4,3 +4,8 @@
 fitting/fitting_results_fixed_2.pkl
 fitting/fitting_results_free_model_2.pkl
 fitting/fitting_results_profile_3.pkl
+
+# Large HDF5 and chain files (>100MB GitHub limit)
+fitting/dft_internal.h5
+fitting/dft_internal_chain_start.txt
+fitting/dft_internal_de.txt
